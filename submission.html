@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Identity Verification</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #fdfdfd;
+      font-family: 'Roboto', sans-serif;
+      color: #222;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #app-container {
+      background: #ffffff;
+      border: 1px solid #e0e0e0;
+      padding: 40px;
+      border-radius: 4px;
+      width: 480px;
+      text-align: center;
+      box-shadow: 0 2px 15px rgba(0,0,0,0.05);
+    }
+
+    .instruction-box {
+      margin-bottom: 30px;
+      text-align: left;
+    }
+
+    .instruction-box p {
+      margin: 0;
+      font-size: 14px;
+      line-height: 1.5;
+      color: #555;
+    }
+
+    .header-text { 
+      font-size: 18px; 
+      font-weight: 500; 
+      margin-bottom: 20px; 
+      color: #111; 
+    }
+    
+    .target-display {
+      font-size: 13px;
+      color: #777;
+      margin-bottom: 15px;
+    }
+
+    .target-display span {
+      color: #2563eb;
+      font-weight: 700;
+      font-size: 16px;
+    }
+
+    #readout-box {
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 42px;
+      background: #f8f9fa;
+      padding: 20px;
+      border-radius: 4px;
+      margin-bottom: 30px;
+      border: 1px solid #eee;
+      color: #222;
+      min-height: 100px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .interaction-area { 
+      margin: 40px 0; 
+    }
+
+    input[type=range] {
+      width: 100%;
+      cursor: pointer;
+      height: 4px;
+      background: #ddd;
+      outline: none;
+      appearance: none;
+    }
+
+    input[type=range]::-webkit-slider-thumb {
+      appearance: none;
+      width: 20px;
+      height: 20px;
+      background: #2563eb;
+      border-radius: 50%;
+      cursor: pointer;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+
+    #thermal-monitor {
+      width: 100%;
+      height: 2px;
+      background: #eee;
+      margin-top: 20px;
+      display: none;
+    }
+    
+    #thermal-level {
+      width: 0%;
+      height: 100%;
+      background: #ef4444;
+    }
+
+    .progress-markers {
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+      margin-top: 30px;
+    }
+    
+    .marker { 
+      width: 10px; 
+      height: 10px; 
+      border-radius: 50%; 
+      background: #eee; 
+      border: 1px solid #ddd; 
+    }
+    
+    .marker.complete { 
+      background: #22c55e;
+      border-color: #22c55e;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="app-container">
+    <div class="header-text">Verify you are human</div>
+
+    <div class="instruction-box">
+      <p>Move the slider to match the target number. Hold the position steady and release to verify.</p>
+    </div>
+
+    <div class="target-display">Target Number: <span id="target-value">10</span></div>
+    
+    <div id="readout-box">0.000000</div>
+
+    <div class="interaction-area">
+      <input type="range" id="input-slider" min="0" max="60" step="0.000001" value="0">
+    </div>
+
+    <div id="thermal-monitor">
+      <div id="thermal-level"></div>
+    </div>
+
+    <div class="progress-markers">
+      <div id="step-1" class="marker"></div>
+      <div id="step-2" class="marker"></div>
+      <div id="step-3" class="marker"></div>
+    </div>
+  </div>
+
+  <script>
+    (function(window, document) {
+      const inputSlider = document.getElementById('input-slider');
+      const readoutBox = document.getElementById('readout-box');
+      const targetValDisplay = document.getElementById('target-value');
+      const thermalMonitor = document.getElementById('thermal-monitor');
+      const thermalLevel = document.getElementById('thermal-level');
+
+      let activeStage = 1;
+      let stageAttempts = 0;
+      let thermalValue = 0;
+      let previousPos = 0;
+
+      const stageConfig = [
+        { target: 10, threshold: 7 },
+        { target: 25, threshold: 12 },
+        { target: 42, threshold: 30 }
+      ];
+
+      function notifyShell(payload) {
+        window.top.postMessage(payload, '*');
+      }
+
+      inputSlider.addEventListener('input', (event) => {
+        let currentPos = parseFloat(event.target.value);
+        const config = stageConfig[activeStage - 1];
+        
+        if (activeStage === 3) {
+          const delta = Math.abs(currentPos - previousPos);
+          if (delta > 0.4) {
+            thermalValue += 25;
+            if (thermalValue >= 100) {
+              thermalValue = 0;
+              inputSlider.value = 0;
+              inputSlider.disabled = true;
+              setTimeout(() => { inputSlider.disabled = false; }, 3000);
+              return;
+            }
+          }
+          previousPos = currentPos;
+        }
+
+        if (activeStage >= 2 && Math.abs(currentPos - config.target) < 0.3) {
+          currentPos += (Math.random() - 0.5) * 0.0008;
+        }
+
+        if (Math.abs(currentPos - config.target) < 0.04) {
+          readoutBox.textContent = config.target;
+          readoutBox.style.background = "#f0fdf4";
+        } else {
+          readoutBox.textContent = currentPos.toFixed(6);
+          readoutBox.style.background = "#f8f9fa";
+        }
+
+        thermalValue = Math.max(0, thermalValue - 0.5);
+        thermalLevel.style.width = thermalValue + '%';
+      });
+
+      const handleRelease = () => {
+        const config = stageConfig[activeStage - 1];
+        let currentPos = parseFloat(inputSlider.value);
+
+        if (Math.round(currentPos) === config.target) {
+          stageAttempts++;
+          
+          if (stageAttempts >= config.threshold) {
+            document.getElementById(`step-${activeStage}`).classList.add('complete');
+            stageAttempts = 0;
+            if (activeStage < 3) {
+              activeStage++;
+              targetValDisplay.textContent = stageConfig[activeStage - 1].target;
+              inputSlider.value = 0;
+              readoutBox.textContent = "0.000000";
+              if (activeStage === 3) thermalMonitor.style.display = 'block';
+            } else {
+              notifyShell({ type: 'success' });
+            }
+          } else {
+            const randomSlip = (Math.random() * 0.00008) + 0.00002;
+            const nudge = Math.random() > 0.5 ? randomSlip : -randomSlip;
+            
+            inputSlider.value = config.target + nudge;
+            readoutBox.textContent = (config.target + nudge).toFixed(6);
+            readoutBox.style.background = "#fef2f2";
+            
+            if (stageAttempts % 4 === 0) notifyShell({ type: 'setPlaybackRate', value: 0.85 });
+          }
+        }
+      };
+
+      inputSlider.addEventListener('mouseup', handleRelease);
+      inputSlider.addEventListener('touchend', handleRelease);
+
+      window.addEventListener('message', (event) => {
+        if (event.data && event.data.type === 'adStarted') notifyShell({ type: 'pause' });
+      });
+
+    })(window, document);
+  </script>
+</body>
+</html>
+

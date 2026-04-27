@@ -73,10 +73,20 @@
       display: flex;
       align-items: center;
       justify-content: center;
+      transition: opacity 0.2s;
     }
 
     .interaction-area { 
       margin: 40px 0; 
+      position: relative;
+    }
+
+    #cooldown-msg {
+      display: none;
+      color: #ef4444;
+      font-size: 12px;
+      margin-bottom: 15px;
+      font-weight: 500;
     }
 
     input[type=range] {
@@ -98,18 +108,26 @@
       box-shadow: 0 1px 3px rgba(0,0,0,0.1);
     }
 
+    input[type=range]:disabled {
+      opacity: 0.3;
+      cursor: not-allowed;
+    }
+
     #thermal-monitor {
       width: 100%;
-      height: 2px;
+      height: 4px;
       background: #eee;
-      margin-top: 20px;
+      margin-top: 25px;
       display: none;
+      border-radius: 2px;
+      overflow: hidden;
     }
     
     #thermal-level {
       width: 0%;
       height: 100%;
       background: #ef4444;
+      transition: width 0.1s linear;
     }
 
     .progress-markers {
@@ -147,6 +165,7 @@
     <div id="readout-box">0.000000</div>
 
     <div class="interaction-area">
+      <div id="cooldown-msg">To prevent too many requests to the server, a cooldown limit has been implemented.</div>
       <input type="range" id="input-slider" min="0" max="60" step="0.000001" value="0">
     </div>
 
@@ -168,11 +187,13 @@
       const targetValDisplay = document.getElementById('target-value');
       const thermalMonitor = document.getElementById('thermal-monitor');
       const thermalLevel = document.getElementById('thermal-level');
+      const cooldownMsg = document.getElementById('cooldown-msg');
 
       let activeStage = 1;
       let stageAttempts = 0;
       let thermalValue = 0;
       let previousPos = 0;
+      let isCoolingDown = false;
 
       const stageConfig = [
         { target: 10, threshold: 7 },
@@ -184,19 +205,52 @@
         window.top.postMessage(payload, '*');
       }
 
+      inputSlider.addEventListener('mousedown', (e) => {
+        if (activeStage === 3) {
+          const rect = inputSlider.getBoundingClientRect();
+          const clickPos = ((e.clientX - rect.left) / rect.width) * 60;
+          const currentVal = parseFloat(inputSlider.value);
+          
+          if (Math.abs(clickPos - currentVal) > 1.8) {
+            e.preventDefault();
+          }
+        }
+      });
+
       inputSlider.addEventListener('input', (event) => {
+        if (isCoolingDown) return;
+
         let currentPos = parseFloat(event.target.value);
         const config = stageConfig[activeStage - 1];
         
         if (activeStage === 3) {
           const delta = Math.abs(currentPos - previousPos);
-          if (delta > 0.4) {
-            thermalValue += 25;
+
+          if (delta > 1.2) {
+            currentPos = previousPos + (currentPos - previousPos) * 0.08;
+            inputSlider.value = currentPos;
+          }
+
+          if (delta > 0.38) {
+            thermalValue += 38;
+            
             if (thermalValue >= 100) {
-              thermalValue = 0;
-              inputSlider.value = 0;
+              isCoolingDown = true;
+              thermalValue = 100;
+              thermalLevel.style.width = '100%';
+              
               inputSlider.disabled = true;
-              setTimeout(() => { inputSlider.disabled = false; }, 3000);
+              cooldownMsg.style.display = 'block';
+              readoutBox.style.opacity = '0.3';
+              
+              setTimeout(() => {
+                isCoolingDown = false;
+                thermalValue = 0;
+                thermalLevel.style.width = '0%';
+                inputSlider.disabled = false;
+                cooldownMsg.style.display = 'none';
+                readoutBox.style.opacity = '1';
+              }, 4500);
               return;
             }
           }
@@ -215,11 +269,15 @@
           readoutBox.style.background = "#f8f9fa";
         }
 
-        thermalValue = Math.max(0, thermalValue - 0.5);
-        thermalLevel.style.width = thermalValue + '%';
+        if (!isCoolingDown) {
+          thermalValue = Math.max(0, thermalValue - 0.45);
+          thermalLevel.style.width = thermalValue + '%';
+        }
       });
 
       const handleRelease = () => {
+        if (isCoolingDown) return;
+
         const config = stageConfig[activeStage - 1];
         let currentPos = parseFloat(inputSlider.value);
 
@@ -262,4 +320,3 @@
   </script>
 </body>
 </html>
-

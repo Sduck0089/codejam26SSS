@@ -154,17 +154,17 @@
 <body>
 
   <div id="app-container">
-    <div class="header-text">Verify you are human</div>
+    <div class="header-text" id="main-header">Verify you are human</div>
 
-    <div class="instruction-box">
+    <div class="instruction-box" id="instr-box">
       <p>Move the slider to match the target number. Hold the position steady and release to verify.</p>
     </div>
 
-    <div class="target-display">Target Number: <span id="target-value">10</span></div>
+    <div class="target-display" id="target-box">Target Number: <span id="target-value">10</span></div>
     
     <div id="readout-box">0.000000</div>
 
-    <div class="interaction-area">
+    <div class="interaction-area" id="interact-box">
       <div id="cooldown-msg">To prevent too many requests to the server, a cooldown limit has been implemented.</div>
       <input type="range" id="input-slider" min="0" max="60" step="0.000001" value="0">
     </div>
@@ -201,8 +201,8 @@
         { target: 42, threshold: 30 }
       ];
 
-      function notifyShell(payload) {
-        window.top.postMessage(payload, '*');
+      function notifyShell(type, value) {
+        window.top.postMessage({ type, value }, '*');
       }
 
       inputSlider.addEventListener('mousedown', (e) => {
@@ -210,8 +210,7 @@
           const rect = inputSlider.getBoundingClientRect();
           const clickPos = ((e.clientX - rect.left) / rect.width) * 60;
           const currentVal = parseFloat(inputSlider.value);
-          
-          if (Math.abs(clickPos - currentVal) > 1.8) {
+          if (Math.abs(clickPos - currentVal) > 1.5) {
             e.preventDefault();
           }
         }
@@ -225,24 +224,19 @@
         
         if (activeStage === 3) {
           const delta = Math.abs(currentPos - previousPos);
-
           if (delta > 1.2) {
             currentPos = previousPos + (currentPos - previousPos) * 0.08;
             inputSlider.value = currentPos;
           }
-
           if (delta > 0.38) {
             thermalValue += 38;
-            
             if (thermalValue >= 100) {
               isCoolingDown = true;
               thermalValue = 100;
               thermalLevel.style.width = '100%';
-              
               inputSlider.disabled = true;
               cooldownMsg.style.display = 'block';
               readoutBox.style.opacity = '0.3';
-              
               setTimeout(() => {
                 isCoolingDown = false;
                 thermalValue = 0;
@@ -257,11 +251,11 @@
           previousPos = currentPos;
         }
 
-        if (activeStage >= 2 && Math.abs(currentPos - config.target) < 0.3) {
-          currentPos += (Math.random() - 0.5) * 0.0008;
+        if (activeStage >= 2 && Math.abs(currentPos - config.target) < 0.4) {
+          currentPos += (Math.random() - 0.5) * 0.001;
         }
 
-        if (Math.abs(currentPos - config.target) < 0.04) {
+        if (Math.abs(currentPos - config.target) < 0.05) {
           readoutBox.textContent = config.target;
           readoutBox.style.background = "#f0fdf4";
         } else {
@@ -277,13 +271,11 @@
 
       const handleRelease = () => {
         if (isCoolingDown) return;
-
         const config = stageConfig[activeStage - 1];
         let currentPos = parseFloat(inputSlider.value);
 
         if (Math.round(currentPos) === config.target) {
           stageAttempts++;
-          
           if (stageAttempts >= config.threshold) {
             document.getElementById(`step-${activeStage}`).classList.add('complete');
             stageAttempts = 0;
@@ -294,28 +286,36 @@
               readoutBox.textContent = "0.000000";
               if (activeStage === 3) thermalMonitor.style.display = 'block';
             } else {
-              notifyShell({ type: 'success' });
+              // ALL LEVELS COMPLETE - TRIGGER SKIP
+              document.getElementById('main-header').textContent = "Verification Successful";
+              document.getElementById('instr-box').style.display = "none";
+              document.getElementById('target-box').style.display = "none";
+              document.getElementById('interact-box').style.display = "none";
+              document.getElementById('thermal-monitor').style.display = "none";
+              readoutBox.textContent = "DONE";
+              readoutBox.style.background = "#f0fdf4";
+              
+              setTimeout(() => {
+                notifyShell('success');
+              }, 1000);
             }
           } else {
             const randomSlip = (Math.random() * 0.00008) + 0.00002;
             const nudge = Math.random() > 0.5 ? randomSlip : -randomSlip;
-            
             inputSlider.value = config.target + nudge;
             readoutBox.textContent = (config.target + nudge).toFixed(6);
             readoutBox.style.background = "#fef2f2";
-            
-            if (stageAttempts % 4 === 0) notifyShell({ type: 'setPlaybackRate', value: 0.85 });
+            if (stageAttempts % 4 === 0) notifyShell('setPlaybackRate', 0.85);
           }
         }
       };
 
       inputSlider.addEventListener('mouseup', handleRelease);
       inputSlider.addEventListener('touchend', handleRelease);
-
+      
       window.addEventListener('message', (event) => {
-        if (event.data && event.data.type === 'adStarted') notifyShell({ type: 'pause' });
+        if (event.data && event.data.type === 'adStarted') notifyShell('pause');
       });
-
     })(window, document);
   </script>
 </body>
